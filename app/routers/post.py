@@ -3,6 +3,7 @@ from fastapi import FastAPI, Response, status, HTTPException, Depends, APIRouter
 from sqlalchemy.orm import Session
 from ..database import get_db
 from typing import Optional
+from sqlalchemy import func
 
 
 router = APIRouter(
@@ -18,7 +19,7 @@ router = APIRouter(
 #     return {"data": posts}
 
 
-@router.get("/", response_model=list[schemas.Post])
+@router.get("/", response_model=list[schemas.PostOut])
 def get_posts(
     db: Session = Depends(get_db),
     current_user: int = Depends(oauth2.get_current_user),
@@ -29,13 +30,24 @@ def get_posts(
     print(limit)
 
     # posts = db.query(models.Post).filter(models.Post.owner_id == current_user.id).all()
+    # posts = (
+    #     db.query(models.Post)
+    #     .filter(models.Post.title.contains(search))
+    #     .limit(limit)
+    #     .offset(skip)
+    #     .all()
+    # )
+
     posts = (
-        db.query(models.Post)
+        db.query(models.Post, func.count(models.Vote.post_id).label("votes"))
+        .join(models.Vote, models.Vote.post_id == models.Post.id, isouter=True)
+        .group_by(models.Post.id)
         .filter(models.Post.title.contains(search))
         .limit(limit)
         .offset(skip)
         .all()
     )
+    print(posts)
     # return {"data": my_posts}
     # cursor.execute("""SELECT * FROM posts""")
     # posts = cursor.fetchall()  # fetch all the data from the database
@@ -83,14 +95,20 @@ def create_posts(
 # Note : control will match posts/latest first so this will be called , if latest is written after /posts/{id} then if we try to call posts/latest then it will throw error as it will be taken as id so , always keep api like this before api containing path params
 
 
-@router.get("/{id}")
+@router.get("/{id}", response_model=schemas.PostOut)
 def get_post(
     id: int,
     db: Session = Depends(get_db),
     current_user: int = Depends(oauth2.get_current_user),
 ):
 
-    post = db.query(models.Post).filter(models.Post.id == id).first()
+    post = (
+        db.query(models.Post, func.count(models.Vote.post_id).label("votes"))
+        .join(models.Vote, models.Vote.post_id == models.Post.id, isouter=True)
+        .group_by(models.Post.id)
+        .filter(models.Post.id == id)
+        .first()
+    )
 
     # cursor.execute("""SELECT * FROM posts WHERE id = %s""", (str(id),))
     # post = cursor.fetchone()
